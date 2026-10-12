@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Реализация «Клод»</title>
+<meta name="description" content="Интерактивный дашборд плановой и фактической реализации нефти, газа и газового конденсата месторождения «Клод», 2020–2025 гг. Демонстрационные данные.">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --surface-2: #f3f2ee;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #898781;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --border: rgba(11,11,11,0.10);
+  --accent: #2a78d6;
+  --focus: #2a78d6;
+  --good-ink: #006300;
+  --bad-ink: #b52c2c;
+  --good: #0ca30c;
+  --bad: #d03b3b;
+  --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100; --c5: #e87ba4;
+  --band: rgba(42,120,214,0.08);
+  --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --accent: #3987e5; --focus: #6da7ec;
+    --good-ink: #2fc42f; --bad-ink: #ef7b7b; --good: #0ca30c; --bad: #e66767;
+    --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181;
+    --band: rgba(57,135,229,0.14);
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232321;
+  --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --accent: #3987e5; --focus: #6da7ec;
+  --good-ink: #2fc42f; --bad-ink: #ef7b7b; --good: #0ca30c; --bad: #e66767;
+  --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181;
+  --band: rgba(57,135,229,0.14);
+  --shadow: none;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--page); color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.wrap { max-width: 1200px; margin: 0 auto; padding: 0 16px; }
+h1, h2, h3 { margin: 0; line-height: 1.25; font-weight: 650; letter-spacing: -0.01em; }
+h1 { font-size: clamp(22px, 3.2vw, 32px); }
+h2 { font-size: 20px; }
+h3 { font-size: 15px; font-weight: 600; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.ink2 { color: var(--ink-2); }
+.num { font-variant-numeric: tabular-nums; }
+
+header.top { padding: 28px 0 18px; }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; }
+.lede { color: var(--ink-2); margin-top: 8px; max-width: 70ch; }
+.demo-tag { display: inline-block; margin-top: 10px; font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px dashed var(--axis); color: var(--ink-2); }
+
+/* Filters */
+.filters {
+  position: sticky; top: 0; z-index: 20;
+  background: color-mix(in srgb, var(--page) 88%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.filters .wrap { display: flex; flex-wrap: wrap; gap: 10px 22px; padding-top: 10px; padding-bottom: 10px; align-items: center; }
+.fgroup { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
+.fgroup > .flabel { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.seg { display: flex; gap: 2px; background: var(--surface-2); border-radius: 9px; padding: 2px; overflow-x: auto; scrollbar-width: none; max-width: 100%; }
+.seg::-webkit-scrollbar { display: none; }
+.seg button {
+  appearance: none; border: 0; background: transparent; color: var(--ink-2);
+  font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 7px; cursor: pointer; white-space: nowrap;
+}
+.seg button:hover { color: var(--ink); background: color-mix(in srgb, var(--surface) 60%, transparent); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 0 0 1px var(--border); }
+.reset-link { margin-left: auto; }
+
+button, [tabindex] { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+.btn {
+  appearance: none; font: inherit; font-size: 13px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+  padding: 6px 12px; border-radius: 8px;
+}
+.btn:hover { background: var(--surface-2); }
+
+/* Cards & sections */
+section.block { margin: 22px 0 8px; }
+.section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; margin-bottom: 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
+.pad { padding: 16px; }
+
+.kpis { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
+.kpi { padding: 14px 16px; }
+.kpi .k-label { font-size: 13px; color: var(--ink-2); }
+.kpi .k-value { font-size: clamp(22px, 3vw, 30px); font-weight: 650; margin-top: 4px; letter-spacing: -0.01em; }
+.kpi .k-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* Status */
+.st { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 550; white-space: nowrap; }
+.st i { font-style: normal; font-size: 10px; line-height: 1; }
+.st.up { color: var(--good-ink); }
+.st.down { color: var(--bad-ink); }
+.st.ok { color: var(--ink-2); }
+
+/* Flow */
+.flow { display: grid; grid-template-columns: 150px minmax(60px, 1fr) minmax(0, 1.6fr); gap: 0; align-items: stretch; position: relative; }
+.flow-src {
+  align-self: center; padding: 16px 14px; border-radius: 12px;
+  background: var(--ink); color: var(--surface); text-align: center;
+}
+.flow-src .t1 { font-size: 11px; opacity: .7; text-transform: uppercase; letter-spacing: .08em; }
+.flow-src .t2 { font-size: 20px; font-weight: 700; margin: 2px 0 6px; }
+.flow-src .t3 { font-size: 12px; opacity: .8; }
+.flow-mid { position: relative; min-width: 0; }
+.flow-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; overflow: visible; }
+.flow-svg path { transition: opacity .2s; }
+.flow-dests { display: flex; flex-direction: column; gap: 10px; }
+.dest {
+  display: grid; grid-template-columns: 6px 1fr auto; gap: 4px 12px; align-items: center;
+  text-align: left; font: inherit; color: inherit; cursor: pointer; width: 100%;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px 10px 10px;
+  transition: border-color .15s, transform .15s;
+}
+.dest:hover { border-color: var(--axis); transform: translateX(2px); }
+.dest .sw { grid-row: 1 / span 3; align-self: stretch; border-radius: 3px; }
+.dest .d-name { font-weight: 600; }
+.dest .d-meta { font-size: 12px; color: var(--muted); }
+.dest .d-rev { text-align: right; font-weight: 650; }
+.dest .d-rev small { display: block; font-weight: 400; font-size: 11.5px; color: var(--muted); }
+.dest .d-row { grid-column: 2 / span 2; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--ink-2); }
+.dest .d-bar { grid-column: 2 / span 2; height: 4px; background: var(--surface-2); border-radius: 2px; overflow: hidden; }
+.dest .d-bar span { display: block; height: 100%; border-radius: 2px; }
+.flow-total { display: flex; flex-wrap: wrap; gap: 6px 24px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 14px; }
+.flow-total b { font-weight: 650; }
+
+/* Commodity sections */
+.com-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.com-badge { font-size: 12px; color: var(--ink-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
+.sums { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; margin: 14px 0; }
+.sum h3 { margin-bottom: 10px; }
+.sum dl { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.sum dt { font-size: 12px; color: var(--muted); }
+.sum dd { margin: 2px 0 0; font-size: 18px; font-weight: 650; }
+.sum dd small { display: block; font-size: 11.5px; font-weight: 400; color: var(--muted); }
+.charts { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+.chart-card { padding: 14px 14px 10px; min-width: 0; }
+.chart-card .hint { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; color: var(--ink-2); margin: 10px 0 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend .lk { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.legend .lk.plan { background: transparent; border: 1.5px dashed var(--ink-2); }
+.legend .ll { width: 18px; height: 0; border-top: 2px solid; display: inline-block; }
+.legend .ll.dash { border-top-style: dashed; }
+.chart { width: 100%; position: relative; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart text { fill: var(--muted); font-size: 11px; font-family: inherit; }
+.chart .hit { fill: transparent; cursor: pointer; }
+.chart .hit:focus-visible { outline: none; }
+.chart g.col:focus-visible .focus-ring { stroke: var(--focus); stroke-width: 2; }
+.chart g.col .focus-ring { fill: none; stroke: none; }
+
+/* Tables */
+.tables { display: grid; gap: 12px; margin-top: 12px; }
+.tcard { padding: 0; overflow: hidden; }
+.tcard > h3 { padding: 14px 16px 8px; }
+.tscroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 8px 12px; text-align: left; vertical-align: top; border-top: 1px solid var(--border); }
+th { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface-2); white-space: nowrap; border-top: 0; }
+td.r, th.r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.reason { min-width: 220px; color: var(--ink-2); }
+tr.total td { font-weight: 650; background: var(--surface-2); }
+td .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: 1px; }
+tbody tr.sel td { background: var(--band); }
+
+/* Empty state */
+.empty { text-align: center; padding: 48px 16px; }
+.empty .ico { font-size: 28px; margin-bottom: 8px; color: var(--muted); }
+.empty p { margin: 6px auto 16px; max-width: 46ch; color: var(--ink-2); }
+
+/* Tooltip */
+.tip {
+  position: fixed; z-index: 50; pointer-events: none; max-width: 280px;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px; font-size: 12.5px; line-height: 1.45;
+  box-shadow: 0 6px 24px rgba(0,0,0,.14); opacity: 0; transition: opacity .12s;
+}
+.tip.on { opacity: 1; }
+.tip .tt { font-weight: 650; margin-bottom: 4px; }
+.tip .tr { display: flex; justify-content: space-between; gap: 14px; }
+.tip .tr span:last-child { font-variant-numeric: tabular-nums; font-weight: 550; }
+.tip .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+
+footer { margin: 36px 0 28px; font-size: 12.5px; color: var(--muted); }
+footer ul { margin: 6px 0 0; padding-left: 18px; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .charts, .sums { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .kpis { grid-template-columns: 1fr; }
+  .kpi { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .kpi .k-sub { width: 100%; }
+  .flow { grid-template-columns: 54px 34px minmax(0,1fr); }
+  .flow-src { padding: 12px 4px; writing-mode: vertical-rl; transform: rotate(180deg); }
+  .flow-src .t2 { font-size: 16px; margin: 0 4px; }
+  .flow-src .t3 { display: none; }
+  .sum dl { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .reset-link { margin-left: 0; }
+  .filters { position: static; }
+  .fgroup { width: 100%; }
+  .fgroup > .flabel { width: 46px; flex: none; }
+  .dest { padding: 9px 10px 9px 8px; gap: 3px 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+@media (forced-colors: active) {
+  .seg button[aria-pressed="true"] { outline: 2px solid CanvasText; }
+}
+</style>
+</head>
+<body>
+
+<header class="top wrap">
+  <div class="eyebrow">Дашборд реализации · 2020–2025</div>
+  <h1>Реализация углеводородного сырья месторождения «Клод»</h1>
+  <p class="lede">План и факт реализации нефти, газа и газового конденсата: объёмы, цены, выручка, направления сбыта и причины отклонений.</p>
+  <span class="demo-tag">Данные условные, демонстрационные</span>
+</header>
+
+<nav class="filters" aria-label="Фильтры">
+  <div class="wrap">
+    <div class="fgroup"><span class="flabel" id="fl-year">Год</span><div class="seg" role="group" aria-labelledby="fl-year" data-filter="year"></div></div>
+    <div class="fgroup"><span class="flabel" id="fl-market">Рынок</span><div class="seg" role="group" aria-labelledby="fl-market" data-filter="market"></div></div>
+    <div class="fgroup"><span class="flabel" id="fl-com">Сырьё</span><div class="seg" role="group" aria-labelledby="fl-com" data-filter="commodity"></div></div>
+    <button class="btn reset-link" type="button" id="resetAll">Сбросить фильтры</button>
+  </div>
+</nav>
+
+<main class="wrap" id="main" aria-live="polite"></main>
+
+<footer class="wrap">
+  <b>Допущения.</b>
+  <ul>
+    <li>Нефть: 7,3 барр./т; газовый конденсат: 8,5 барр./т; 1 тыс. м³ газа ≈ 5,9 барр. н.э.</li>
+    <li>Выручка = объём × коэффициент пересчёта × цена. Нефть и конденсат — тыс. т, газ — млн м³.</li>
+    <li>Отклонение = факт − план; % = (факт − план) / план × 100. «В пределах плана» — отклонение в пределах ±2 %.</li>
+    <li>Средняя цена за период — средневзвешенная по объёму.</li>
+    <li>Все цифры и причины отклонений условные и служат для демонстрации.</li>
+  </ul>
+</footer>
+
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ---------- Справочники ---------- */
+const YEARS = [2020, 2021, 2022, 2023, 2024, 2025];
+const COMS = {
+  oil:  { name: 'Нефть',             unit: 'тыс. т', price: '$/барр.',     conv: 7.3 },
+  gas:  { name: 'Газ',               unit: 'млн м³', price: '$/тыс. м³',   conv: null },
+  cond: { name: 'Газовый конденсат', unit: 'тыс. т', price: '$/барр.',     conv: 8.5 },
+};
+const GAS_BOE = 5.9;
+const MARKETS = { export: 'Экспорт', domestic: 'Внутренний рынок РК' };
+const DIRS = {
+  ktk:  { name: 'КТК',                  com: 'oil',  market: 'export',   color: 'var(--c1)' },
+  as:   { name: 'Атырау – Самара',      com: 'oil',  market: 'export',   color: 'var(--c2)' },
+  kz:   { name: 'Внутренний рынок РК',  com: 'gas',  market: 'domestic', color: 'var(--c3)' },
+  ogpz: { name: 'Оренбургский ГПЗ',     com: 'gas',  market: 'export',   color: 'var(--c4)' },
+  npz:  { name: 'НПЗ АО «Конденсат»',   com: 'cond', market: 'domestic', color: 'var(--c5)' },
+};
+const DIR_ORDER = ['ktk', 'as', 'kz', 'ogpz', 'npz'];
+
+/* ---------- Данные (условные) ----------
+   [год, направление, объём план, объём факт, причина (объём), цена план, цена факт, причина (цена)] */
+const RAW = [
+  // Нефть — КТК (экспорт), $/барр.
+  [2020,'ktk',1250,1148,'Сокращение добычи в рамках соглашения ОПЕК+ (квоты с мая 2020 г.)',55,40.1,'Обвал мировых котировок из-за пандемии COVID-19'],
+  [2021,'ktk',1200,1186,'В пределах плана',50,69.6,'Восстановление спроса и рост котировок Brent'],
+  [2022,'ktk',1260,1171,'Ограничение приёма нефти из-за повреждения выносных причалов КТК после шторма',70,93.8,'Ценовой скачок на фоне энергетического кризиса; дисконт CPC Blend частично сдержал рост'],
+  [2023,'ktk',1280,1302,'В пределах плана',80,79.4,'В пределах плана'],
+  [2024,'ktk',1300,1239,'Добровольное сокращение добычи ОПЕК+ и плановый ремонт скважин',80,78.9,'В пределах плана'],
+  [2025,'ktk',1320,1371,'Ввод новых скважин и расширение пропускной способности КТК',75,66.2,'Снижение котировок из-за наращивания добычи ОПЕК+ и избытка предложения'],
+  // Нефть — Атырау – Самара (экспорт), $/барр.
+  [2020,'as',450,468,'Дополнительная квота на транспортировку по системе нефтепроводов',53,38.7,'Обвал мировых котировок из-за пандемии COVID-19'],
+  [2021,'as',430,425,'В пределах плана',48,68.0,'Восстановление спроса и рост котировок'],
+  [2022,'as',420,497,'Перенаправление объёмов с КТК на время ограничений приёма',68,76.4,'Рост котировок, частично компенсированный расширением дисконта смеси Urals'],
+  [2023,'as',400,362,'Снижение квоты в системе трубопроводов и осторожность покупателей',76,63.5,'Глубокий дисконт к Brent для смеси Urals'],
+  [2024,'as',380,371,'Плановый ремонт нефтеперекачивающей станции',75,68.2,'Сохранение дисконта Urals при снижении мировых цен'],
+  [2025,'as',360,354,'В пределах плана',70,58.9,'Снижение мировых цен и сохранение дисконта Urals'],
+  // Газ — внутренний рынок РК, $/тыс. м³
+  [2020,'kz',850,871,'Холодный отопительный сезон, повышенный спрос',32,29.4,'Ослабление тенге при регулируемой оптовой цене'],
+  [2021,'kz',880,902,'Рост потребления в рамках газификации регионов',31,31.2,'В пределах плана'],
+  [2022,'kz',900,893,'В пределах плана',32,30.1,'Ослабление тенге при регулируемой оптовой цене'],
+  [2023,'kz',950,1012,'Приоритет обеспечения внутреннего рынка по решению уполномоченного органа',33,34.8,'Повышение регулируемых оптовых цен на газ'],
+  [2024,'kz',1000,1046,'Рост потребления, подключение новых населённых пунктов',36,36.5,'В пределах плана'],
+  [2025,'kz',1050,1038,'В пределах плана',38,41.9,'Поэтапное повышение оптовых цен на внутреннем рынке'],
+  // Газ — Оренбургский ГПЗ (экспорт), $/тыс. м³
+  [2020,'ogpz',2600,2418,'Снижение добычи попутного газа вслед за сокращением добычи нефти (ОПЕК+)',95,78,'Низкие цены на газовых хабах и формула цены с лагом'],
+  [2021,'ogpz',2550,2531,'В пределах плана',90,112,'Рост цен на газ на европейских хабах во второй половине года'],
+  [2022,'ogpz',2500,2384,'Плановый ремонт на газоперерабатывающем заводе',110,158,'Энергетический кризис, рекордные цены на газ'],
+  [2023,'ogpz',2450,2265,'Перераспределение объёмов на внутренний рынок',140,121,'Снижение цен после кризиса 2022 г.'],
+  [2024,'ogpz',2400,2262,'Перераспределение на внутренний рынок и ремонт компрессорной станции',115,96,'Дальнейшая нормализация цен на газ'],
+  [2025,'ogpz',2350,2391,'В пределах плана',100,102,'В пределах плана'],
+  // Конденсат — НПЗ АО «Конденсат» (внутренний), $/барр.
+  [2020,'npz',320,298,'Снижение загрузки НПЗ в период пандемии',40,31.5,'Снижение цен на нефтепродукты на внутреннем рынке'],
+  [2021,'npz',310,314,'В пределах плана',38,47.2,'Рост цен вслед за мировыми котировками'],
+  [2022,'npz',320,331,'Повышенный спрос на топливо на внутреннем рынке',52,58.6,'Рост мировых котировок и цен на нефтепродукты'],
+  [2023,'npz',330,305,'Капитальный ремонт НПЗ (остановка на 30 суток)',58,55.1,'Снижение мировых котировок'],
+  [2024,'npz',335,341,'В пределах плана',56,55.4,'В пределах плана'],
+  [2025,'npz',340,322,'Естественное снижение конденсатного фактора на месторождении',54,49.8,'Снижение мировых котировок'],
+];
+
+const ROWS = RAW.map(([year, dir, vPlan, vFact, vReason, pPlan, pFact, pReason]) => {
+  const d = DIRS[dir], c = COMS[d.com];
+  const rev = (v, p) => d.com === 'gas' ? v * p / 1000 : v * c.conv * p / 1000; // млн $
+  return {
+    year, dir, com: d.com, market: d.market, vPlan, vFact, vReason, pPlan, pFact, pReason,
+    rPlan: rev(vPlan, pPlan), rFact: rev(vFact, pFact),
+  };
+});
+
+/* ---------- Состояние ---------- */
+const DEFAULT = { year: 'all', market: 'all', commodity: 'all' };
+const state = { ...DEFAULT };
+const FILTERS = {
+  year: [['all', 'Все годы'], ...YEARS.map(y => [String(y), String(y)])],
+  market: [['all', 'Все'], ['export', 'Экспорт'], ['domestic', 'Внутренний РК']],
+  commodity: [['all', 'Все виды'], ['oil', 'Нефть'], ['gas', 'Газ'], ['cond', 'Конденсат']],
+};
+
+/* ---------- Утилиты ---------- */
+const fmt = (n, d = 0) => n.toLocaleString('ru-RU', { minimumFractionDigits: d, maximumFractionDigits: d }).replace('-', '−');
+const sgn = (n, d = 0) => (n > 0 ? '+' : n < 0 ? '−' : '±') + fmt(Math.abs(n), d);
+const pct = (f, p) => p ? (f - p) / p * 100 : 0;
+const sum = (arr, k) => arr.reduce((s, r) => s + (typeof k === 'function' ? k(r) : r[k]), 0);
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+
+function status(p) {
+  if (Math.abs(p) <= 2) return { cls: 'ok', icon: '●', text: 'в пределах плана' };
+  return p > 0 ? { cls: 'up', icon: '▲', text: 'выше плана' } : { cls: 'down', icon: '▼', text: 'ниже плана' };
+}
+const stHTML = p => { const s = status(p); return `<span class="st ${s.cls}"><i aria-hidden="true">${s.icon}</i>${sgn(p, 1)} % · ${s.text}</span>`; };
+
+function filtered({ ignoreYear = false } = {}) {
+  return ROWS.filter(r =>
+    (ignoreYear || state.year === 'all' || r.year === +state.year) &&
+    (state.market === 'all' || r.market === state.market) &&
+    (state.commodity === 'all' || r.com === state.commodity));
+}
+const yearLabel = () => state.year === 'all' ? '2020–2025' : state.year + ' г.';
+
+/* ---------- Фильтры ---------- */
+function renderFilters() {
+  document.querySelectorAll('.seg[data-filter]').forEach(seg => {
+    const key = seg.dataset.filter;
+    seg.innerHTML = FILTERS[key].map(([v, l]) =>
+      `<button type="button" data-v="${v}" aria-pressed="${state[key] === v}">${l}</button>`).join('');
+  });
+}
+document.querySelectorAll('.seg[data-filter]').forEach(seg => {
+  seg.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    setFilter(seg.dataset.filter, b.dataset.v);
+  });
+});
+document.getElementById('resetAll').addEventListener('click', () => { Object.assign(state, DEFAULT); render(); });
+
+function setFilter(key, v) {
+  state[key] = v;
+  render();
+}
+
+/* ---------- Подсказка ---------- */
+const tip = document.getElementById('tip');
+function showTip(html, x, y) {
+  tip.innerHTML = html; tip.classList.add('on');
+  const w = tip.offsetWidth, h = tip.offsetHeight, vw = innerWidth, vh = innerHeight;
+  let left = x + 14, top = y + 14;
+  if (left + w > vw - 8) left = Math.max(8, x - w - 14);
+  if (top + h > vh - 8) top = Math.max(8, y - h - 14);
+  tip.style.left = left + 'px'; tip.style.top = top + 'px';
+}
+function hideTip() { tip.classList.remove('on'); }
+function bindTip(el, htmlFn, onActivate) {
+  el.addEventListener('pointermove', e => showTip(htmlFn(), e.clientX, e.clientY));
+  el.addEventListener('pointerleave', hideTip);
+  el.addEventListener('focus', () => { const r = el.getBoundingClientRect(); showTip(htmlFn(), r.right, r.top); });
+  el.addEventListener('blur', hideTip);
+  if (onActivate) {
+    el.addEventListener('click', onActivate);
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onActivate(); } });
+  }
+}
+addEventListener('scroll', hideTip, { passive: true });
+
+/* ---------- Рендер ---------- */
+const main = document.getElementById('main');
+
+function render() {
+  renderFilters();
+  hideTip();
+  const rows = filtered();
+  if (!rows.length) {
+    const what = [state.commodity !== 'all' && COMS[state.commodity].name.toLowerCase(),
+                  state.market !== 'all' && MARKETS[state.market].toLowerCase()].filter(Boolean).join(' + ');
+    main.innerHTML = `<section class="block card empty" role="status">
+      <div class="ico" aria-hidden="true">∅</div>
+      <h2>Нет данных для выбранной комбинации</h2>
+      <p>Для сочетания «${esc(what || 'выбранные фильтры')}» поставок нет: нефть реализуется только на экспорт, конденсат — только на внутренний рынок РК.</p>
+      <button class="btn" type="button" id="emptyReset">Сбросить фильтры</button>
+    </section>`;
+    document.getElementById('emptyReset').addEventListener('click', () => { Object.assign(state, DEFAULT); render(); });
+    return;
+  }
+  main.innerHTML = '';
+  main.appendChild(renderKpis(rows));
+  main.appendChild(renderFlow(rows));
+  const coms = Object.keys(COMS).filter(c => rows.some(r => r.com === c));
+  coms.forEach(c => main.appendChild(renderCommodity(c)));
+  requestAnimationFrame(drawAll);
+}
+
+/* KPI */
+function renderKpis(rows) {
+  const rp = sum(rows, 'rPlan'), rf = sum(rows, 'rFact'), d = rf - rp, p = pct(rf, rp);
+  const el = document.createElement('section');
+  el.className = 'block';
+  el.setAttribute('aria-label', 'Итоги по выручке');
+  el.innerHTML = `<div class="kpis">
+    <div class="card kpi"><div class="k-label">Плановая выручка</div><div class="k-value num">${fmt(rp)} <span class="muted" style="font-size:.55em;font-weight:500">млн $</span></div><div class="k-sub">${yearLabel()} · ${rows.length} записей</div></div>
+    <div class="card kpi"><div class="k-label">Фактическая выручка</div><div class="k-value num">${fmt(rf)} <span class="muted" style="font-size:.55em;font-weight:500">млн $</span></div><div class="k-sub">${yearLabel()}</div></div>
+    <div class="card kpi"><div class="k-label">Отклонение от плана</div><div class="k-value num">${sgn(d)} <span class="muted" style="font-size:.55em;font-weight:500">млн $</span></div><div class="k-sub">${stHTML(p)}</div></div>
+  </div>`;
+  return el;
+}
+
+/* Схема потоков */
+function renderFlow(rows) {
+  const el = document.createElement('section');
+  el.className = 'block';
+  el.setAttribute('aria-labelledby', 'flow-h');
+  const dirs = DIR_ORDER.filter(k => rows.some(r => r.dir === k)).map(k => {
+    const rs = rows.filter(r => r.dir === k);
+    return { k, d: DIRS[k], vPlan: sum(rs, 'vPlan'), vFact: sum(rs, 'vFact'), rPlan: sum(rs, 'rPlan'), rFact: sum(rs, 'rFact') };
+  });
+  const maxRev = Math.max(...dirs.map(x => x.rFact));
+  const rp = sum(rows, 'rPlan'), rf = sum(rows, 'rFact');
+  el.innerHTML = `
+    <div class="section-head"><h2 id="flow-h">Направления сбыта</h2><span class="muted" style="font-size:13px">${yearLabel()} · толщина потока ∝ фактической выручке · нажмите на направление</span></div>
+    <div class="card pad">
+      <div class="flow">
+        <div class="flow-src"><div class="t1">Месторождение</div><div class="t2">«Клод»</div><div class="t3">${fmt(rf)} млн $</div></div>
+        <div class="flow-mid"><svg class="flow-svg" aria-hidden="true"></svg></div>
+        <div class="flow-dests">
+          ${dirs.map(x => {
+            const c = COMS[x.d.com], p = pct(x.vFact, x.vPlan);
+            return `<button type="button" class="dest" data-dir="${x.k}" aria-label="${esc(x.d.name)}: ${c.name}, ${MARKETS[x.d.market]}. Открыть подробности">
+              <span class="sw" style="background:${x.d.color}"></span>
+              <span><span class="d-name">${esc(x.d.name)}</span><br><span class="d-meta">${c.name} · ${MARKETS[x.d.market]}</span></span>
+              <span class="d-rev num">${fmt(x.rFact)} млн $<small>план ${fmt(x.rPlan)} · ${sgn(pct(x.rFact, x.rPlan),1)} %</small></span>
+              <span class="d-row num"><span>Объём план ${fmt(x.vPlan)} → факт ${fmt(x.vFact)} ${c.unit}</span>${stHTML(p)}</span>
+              <span class="d-bar"><span style="width:${(x.rFact / maxRev * 100).toFixed(1)}%;background:${x.d.color}"></span></span>
+            </button>`;
+          }).join('')}
+        </div>
+      </div>
+      <div class="flow-total num">
+        <span>Выручка план: <b>${fmt(rp)} млн $</b></span>
+        <span>Факт: <b>${fmt(rf)} млн $</b></span>
+        <span>Отклонение: <b>${sgn(rf - rp)} млн $</b> ${stHTML(pct(rf, rp))}</span>
+      </div>
+    </div>`;
+  el.querySelectorAll('.dest').forEach(b => b.addEventListener('click', () => {
+    const com = DIRS[b.dataset.dir].com;
+    state.commodity = com;
+    render();
+    const t = document.getElementById('sec-' + com);
+    if (t) { t.scrollIntoView({ block: 'start' }); t.focus({ preventScroll: true }); }
+  }));
+  el._flow = { dirs };
+  return el;
+}
+
+function drawFlow() {
+  const flow = main.querySelector('.flow'); if (!flow) return;
+  const svg = flow.querySelector('.flow-svg'), src = flow.querySelector('.flow-src');
+  const dests = [...flow.querySelectorAll('.dest')];
+  const sr = svg.getBoundingClientRect(), srcR = src.getBoundingClientRect();
+  const W = sr.width, H = sr.height;
+  if (W < 4) return;
+  const revs = dests.map(b => sum(filtered().filter(r => r.dir === b.dataset.dir), 'rFact'));
+  const total = revs.reduce((a, b) => a + b, 0) || 1;
+  const maxThick = Math.min(srcR.height * 0.9, H * 0.6);
+  const minDestH = Math.min(...dests.map(b => b.getBoundingClientRect().height));
+  const scale = Math.min(maxThick / total, (minDestH * 0.85) / Math.max(...revs));
+  let y0 = (srcR.top + srcR.height / 2) - sr.top - (total * scale) / 2;
+  let paths = '';
+  dests.forEach((b, i) => {
+    const t = Math.max(2, revs[i] * scale);
+    const br = b.getBoundingClientRect();
+    const yc = br.top + br.height / 2 - sr.top;
+    const a1 = y0, a2 = y0 + t, b1 = yc - t / 2, b2 = yc + t / 2, mx = W / 2;
+    y0 += revs[i] * scale;
+    const col = DIRS[b.dataset.dir].color;
+    paths += `<path data-dir="${b.dataset.dir}" d="M0 ${a1} C${mx} ${a1} ${mx} ${b1} ${W} ${b1} L${W} ${b2} C${mx} ${b2} ${mx} ${a2} 0 ${a2} Z" fill="${col}" fill-opacity=".55" stroke="var(--surface)" stroke-width="1"/>`;
+  });
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = paths;
+  dests.forEach(b => {
+    const on = () => svg.querySelectorAll('path').forEach(p => p.style.opacity = p.dataset.dir === b.dataset.dir ? 1 : .25);
+    const off = () => svg.querySelectorAll('path').forEach(p => p.style.opacity = 1);
+    b.onpointerenter = on; b.onpointerleave = off; b.onfocus = on; b.onblur = off;
+  });
+}
+
+/* Раздел по виду сырья */
+function renderCommodity(com) {
+  const c = COMS[com];
+  const rows = filtered().filter(r => r.com === com);
+  const allYears = filtered({ ignoreYear: true }).filter(r => r.com === com);
+  const dirs = DIR_ORDER.filter(k => allYears.some(r => r.dir === k));
+  const el = document.createElement('section');
+  el.className = 'block';
+  el.id = 'sec-' + com;
+  el.tabIndex = -1;
+  el.setAttribute('aria-labelledby', 'h-' + com);
+
+  const vp = sum(rows, 'vPlan'), vf = sum(rows, 'vFact');
+  const wpP = sum(rows, r => r.pPlan * r.vPlan) / vp, wpF = sum(rows, r => r.pFact * r.vFact) / vf;
+  const boe = v => com === 'gas' ? `<small>≈ ${fmt(v / GAS_BOE, 1)} $/барр. н.э.</small>` : '';
+
+  el.innerHTML = `
+    <div class="section-head">
+      <div class="com-head"><h2 id="h-${com}">${c.name}</h2>
+        ${dirs.map(k => `<span class="com-badge"><span class="dot" style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:${DIRS[k].color}"></span>${esc(DIRS[k].name)} · ${MARKETS[DIRS[k].market]}</span>`).join('')}
+      </div>
+      <span class="muted" style="font-size:13px">${yearLabel()}</span>
+    </div>
+    <div class="sums">
+      <div class="card pad sum"><h3>Объёмы, ${c.unit}</h3><dl class="num">
+        <div><dt>План</dt><dd>${fmt(vp)}</dd></div>
+        <div><dt>Факт</dt><dd>${fmt(vf)}</dd></div>
+        <div><dt>Отклонение</dt><dd>${sgn(vf - vp)}</dd></div>
+        <div><dt>Отклонение, %</dt><dd>${stHTML(pct(vf, vp))}</dd></div>
+      </dl></div>
+      <div class="card pad sum"><h3>Цены, ${c.price} (средневзвешенные)</h3><dl class="num">
+        <div><dt>План</dt><dd>${fmt(wpP, 1)}${boe(wpP)}</dd></div>
+        <div><dt>Факт</dt><dd>${fmt(wpF, 1)}${boe(wpF)}</dd></div>
+        <div><dt>Отклонение, $</dt><dd>${sgn(wpF - wpP, 1)}</dd></div>
+        <div><dt>Отклонение, %</dt><dd>${stHTML(pct(wpF, wpP))}</dd></div>
+      </dl></div>
+    </div>
+    <div class="charts">
+      <div class="card chart-card">
+        <h3>Объём по годам, ${c.unit}</h3>
+        <div class="hint">Слева — план, справа — факт по направлениям. Нажмите на год, чтобы выбрать его в фильтре.</div>
+        <div class="legend">
+          <span><i class="lk plan"></i>План</span>
+          ${dirs.map(k => `<span><i class="lk" style="background:${DIRS[k].color}"></i>Факт · ${esc(DIRS[k].name)}</span>`).join('')}
+        </div>
+        <div class="chart" data-chart="vol" data-com="${com}"></div>
+      </div>
+      <div class="card chart-card">
+        <h3>Цена по годам, ${c.price}</h3>
+        <div class="hint">Сплошная линия — факт, пунктир — план. Наведите или сфокусируйте год для значений.</div>
+        <div class="legend">
+          ${dirs.map(k => `<span><i class="ll" style="border-color:${DIRS[k].color}"></i>${esc(DIRS[k].name)} факт</span><span><i class="ll dash" style="border-color:${DIRS[k].color}"></i>план</span>`).join('')}
+        </div>
+        <div class="chart" data-chart="price" data-com="${com}"></div>
+      </div>
+    </div>
+    <div class="tables">
+      <div class="card tcard"><h3>Объёмы: план и факт</h3><div class="tscroll">${volTable(rows, com)}</div></div>
+      <div class="card tcard"><h3>Цены и выручка</h3><div class="tscroll">${priceTable(rows, com)}</div></div>
+    </div>`;
+  return el;
+}
+
+function volTable(rows, com) {
+  const c = COMS[com];
+  const body = rows.map(r => `<tr>
+    <td class="num">${r.year}</td>
+    <td><span class="dot" style="background:${DIRS[r.dir].color}"></span>${esc(DIRS[r.dir].name)}</td>
+    <td>${MARKETS[r.market]}</td>
+    <td class="r">${fmt(r.vPlan)}</td><td class="r">${fmt(r.vFact)}</td>
+    <td class="r">${sgn(r.vFact - r.vPlan)}</td><td class="r">${stHTML(pct(r.vFact, r.vPlan))}</td>
+    <td class="reason">${esc(r.vReason)}</td></tr>`).join('');
+  const vp = sum(rows, 'vPlan'), vf = sum(rows, 'vFact');
+  return `<table><caption class="sr-only">Объёмы реализации, ${c.unit}</caption>
+    <thead><tr><th>Год</th><th>Направление</th><th>Рынок</th><th class="r">План, ${c.unit}</th><th class="r">Факт, ${c.unit}</th><th class="r">Откл., ${c.unit}</th><th class="r">Откл., %</th><th>Причина</th></tr></thead>
+    <tbody>${body}</tbody>
+    ${rows.length > 1 ? `<tfoot><tr class="total"><td colspan="3">Итого</td><td class="r">${fmt(vp)}</td><td class="r">${fmt(vf)}</td><td class="r">${sgn(vf - vp)}</td><td class="r">${stHTML(pct(vf, vp))}</td><td></td></tr></tfoot>` : ''}
+  </table>`;
+}
+
+function priceTable(rows, com) {
+  const c = COMS[com];
+  const boe = v => com === 'gas' ? `<br><span class="muted" style="font-size:11.5px">${fmt(v / GAS_BOE, 1)} $/б н.э.</span>` : '';
+  const body = rows.map(r => `<tr>
+    <td class="num">${r.year}</td>
+    <td><span class="dot" style="background:${DIRS[r.dir].color}"></span>${esc(DIRS[r.dir].name)}</td>
+    <td class="r">${fmt(r.pPlan, 1)}${boe(r.pPlan)}</td><td class="r">${fmt(r.pFact, 1)}${boe(r.pFact)}</td>
+    <td class="r">${sgn(r.pFact - r.pPlan, 1)}</td><td class="r">${stHTML(pct(r.pFact, r.pPlan))}</td>
+    <td class="r">${fmt(r.rPlan, 1)} → <b>${fmt(r.rFact, 1)}</b></td>
+    <td class="reason">${esc(r.pReason)}</td></tr>`).join('');
+  const rp = sum(rows, 'rPlan'), rf = sum(rows, 'rFact');
+  return `<table><caption class="sr-only">Цены реализации, ${c.price}, и выручка, млн $</caption>
+    <thead><tr><th>Год</th><th>Направление</th><th class="r">План, ${c.price}</th><th class="r">Факт, ${c.price}</th><th class="r">Откл., $</th><th class="r">Откл., %</th><th class="r">Выручка план → факт, млн $</th><th>Причина отклонения цены</th></tr></thead>
+    <tbody>${body}</tbody>
+    ${rows.length > 1 ? `<tfoot><tr class="total"><td colspan="6">Итого выручка</td><td class="r">${fmt(rp, 1)} → ${fmt(rf, 1)}</td><td>${stHTML(pct(rf, rp))}</td></tr></tfoot>` : ''}
+  </table>`;
+}
+
+/* ---------- Графики (SVG, по фактической ширине контейнера) ---------- */
+function niceStep(raw) {
+  const p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * p;
+}
+function ticks(lo, hi, n = 4) {
+  const step = niceStep((hi - lo) / n), out = [];
+  const start = Math.floor(lo / step) * step;
+  for (let v = start; v <= hi + step * 0.001; v += step) out.push(+v.toFixed(6));
+  if (out[out.length - 1] < hi) out.push(out[out.length - 1] + step);
+  return out;
+}
+const NS = 'http://www.w3.org/2000/svg';
+
+function chartRows(com) { return filtered({ ignoreYear: true }).filter(r => r.com === com); }
+
+function selectYear(y) {
+  state.year = state.year === String(y) ? 'all' : String(y);
+  const focusSel = `[data-year="${y}"]`;
+  const active = document.activeElement && document.activeElement.closest('.chart');
+  const key = active ? active.dataset.chart + active.dataset.com : null;
+  render();
+  if (key) requestAnimationFrame(() => {
+    const el = [...main.querySelectorAll('.chart')].find(c => c.dataset.chart + c.dataset.com === key);
+    const g = el && el.querySelector(focusSel); if (g) g.focus({ preventScroll: true });
+  });
+}
+
+function drawVol(el) {
+  const com = el.dataset.com, c = COMS[com], rows = chartRows(com);
+  const dirs = DIR_ORDER.filter(k => rows.some(r => r.dir === k));
+  const W = el.clientWidth, H = 240, m = { t: 10, r: 4, b: 26, l: 44 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const data = YEARS.map(y => {
+    const rs = rows.filter(r => r.year === y);
+    return { y, plan: sum(rs, 'vPlan'), fact: sum(rs, 'vFact'), parts: dirs.map(k => { const r = rs.find(x => x.dir === k); return { k, r }; }) };
+  });
+  const tk = ticks(0, Math.max(...data.map(d => Math.max(d.plan, d.fact))));
+  const ymax = tk[tk.length - 1];
+  const Y = v => m.t + ih - v / ymax * ih;
+  const band = iw / YEARS.length, bw = Math.max(6, Math.min(26, (band - 14) / 2));
+  let s = `<svg width="${W}" height="${H}" role="img" aria-label="Объём реализации по годам, ${c.name}, ${c.unit}">`;
+  tk.forEach(t => {
+    s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(t)}" y2="${Y(t)}" stroke="${t === 0 ? 'var(--axis)' : 'var(--grid)'}" stroke-width="1"/>`;
+    s += `<text x="${m.l - 6}" y="${Y(t) + 4}" text-anchor="end" class="num">${fmt(t)}</text>`;
+  });
+  data.forEach((d, i) => {
+    const x0 = m.l + i * band, cx = x0 + band / 2, sel = state.year === String(d.y);
+    const xp = cx - bw - 1, xf = cx + 1;
+    s += `<g class="col" tabindex="0" role="button" data-year="${d.y}" aria-label="${d.y}: план ${fmt(d.plan)}, факт ${fmt(d.fact)} ${c.unit}. ${sel ? 'Снять выбор года' : 'Выбрать год'}">`;
+    if (sel) s += `<rect x="${x0 + 2}" y="${m.t}" width="${band - 4}" height="${ih}" fill="var(--band)" rx="6"/>`;
+    const op = state.year !== 'all' && !sel ? 0.35 : 1;
+    // план
+    if (d.plan) s += `<path d="${roundTop(xp, Y(d.plan), bw, Y(0) - Y(d.plan), 4)}" fill="var(--surface-2)" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="3 2" opacity="${op}"/>`;
+    // факт по направлениям
+    let acc = 0;
+    d.parts.forEach((p, j) => {
+      if (!p.r) return;
+      const v = p.r.vFact, yTop = Y(acc + v), h = Y(acc) - yTop - (acc > 0 ? 2 : 0);
+      const last = j === d.parts.length - 1 || d.parts.slice(j + 1).every(q => !q.r);
+      s += last ? `<path d="${roundTop(xf, yTop, bw, Math.max(1, h), 4)}" fill="${DIRS[p.k].color}" opacity="${op}"/>`
+                : `<rect x="${xf}" y="${yTop}" width="${bw}" height="${Math.max(1, h)}" fill="${DIRS[p.k].color}" opacity="${op}"/>`;
+      acc += v;
+    });
+    s += `<rect class="focus-ring" x="${x0 + 2}" y="${m.t}" width="${band - 4}" height="${ih}" rx="6"/>`;
+    s += `<rect class="hit" x="${x0}" y="${m.t}" width="${band}" height="${ih + m.b}"/>`;
+    s += `<text x="${cx}" y="${H - 8}" text-anchor="middle" class="num" style="${sel ? 'fill:var(--ink);font-weight:650' : ''}">${d.y}</text>`;
+    s += `</g>`;
+  });
+  s += `</svg>`;
+  el.innerHTML = s;
+  el.querySelectorAll('g.col').forEach(g => {
+    const d = data.find(x => x.y === +g.dataset.year);
+    bindTip(g, () => {
+      const p = pct(d.fact, d.plan);
+      return `<div class="tt">${d.y} · ${c.name}</div>
+        <div class="tr"><span>План</span><span>${fmt(d.plan)} ${c.unit}</span></div>
+        ${d.parts.filter(p => p.r).map(p => `<div class="tr"><span><i class="sw" style="background:${DIRS[p.k].color}"></i>${esc(DIRS[p.k].name)}</span><span>${fmt(p.r.vFact)} (${sgn(pct(p.r.vFact, p.r.vPlan), 1)} %)</span></div>`).join('')}
+        <div class="tr" style="border-top:1px solid var(--border);margin-top:4px;padding-top:4px"><span>Факт всего</span><span>${fmt(d.fact)} ${c.unit}</span></div>
+        <div style="margin-top:4px">${stHTML(p)}</div>
+        <div class="muted" style="margin-top:6px;font-size:11.5px">Нажмите, чтобы ${state.year === String(d.y) ? 'снять выбор' : 'выбрать год'}</div>`;
+    }, () => selectYear(d.y));
+  });
+}
+
+function roundTop(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h);
+  return `M${x} ${y + h} V${y + r} Q${x} ${y} ${x + r} ${y} H${x + w - r} Q${x + w} ${y} ${x + w} ${y + r} V${y + h} Z`;
+}
+
+function drawPrice(el) {
+  const com = el.dataset.com, c = COMS[com], rows = chartRows(com);
+  const dirs = DIR_ORDER.filter(k => rows.some(r => r.dir === k));
+  const W = el.clientWidth, H = 240, m = { t: 10, r: 10, b: 26, l: 40 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const vals = rows.flatMap(r => [r.pPlan, r.pFact]);
+  const tk = ticks(Math.max(0, Math.min(...vals) * 0.85), Math.max(...vals) * 1.03);
+  const lo = tk[0], hi = tk[tk.length - 1];
+  const band = iw / YEARS.length;
+  const X = i => m.l + band * i + band / 2, Y = v => m.t + ih - (v - lo) / (hi - lo) * ih;
+  let s = `<svg width="${W}" height="${H}" role="img" aria-label="Цены реализации по годам, ${c.name}, ${c.price}">`;
+  tk.forEach(t => {
+    s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(t)}" y2="${Y(t)}" stroke="${t === lo ? 'var(--axis)' : 'var(--grid)'}"/>`;
+    s += `<text x="${m.l - 6}" y="${Y(t) + 4}" text-anchor="end" class="num">${fmt(t)}</text>`;
+  });
+  const selIdx = YEARS.indexOf(+state.year);
+  if (selIdx >= 0) s += `<rect x="${m.l + band * selIdx + 2}" y="${m.t}" width="${band - 4}" height="${ih}" fill="var(--band)" rx="6"/>`;
+  s += `<line class="xh" x1="0" x2="0" y1="${m.t}" y2="${m.t + ih}" stroke="var(--axis)" stroke-width="1" opacity="0"/>`;
+  dirs.forEach(k => {
+    const rs = YEARS.map(y => rows.find(r => r.year === y && r.dir === k));
+    const line = key => rs.map((r, i) => r ? `${i && rs[i - 1] ? 'L' : 'M'}${X(i)} ${Y(r[key])}` : '').join(' ');
+    s += `<path d="${line('pPlan')}" fill="none" stroke="${DIRS[k].color}" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round" opacity=".85"/>`;
+    s += `<path d="${line('pFact')}" fill="none" stroke="${DIRS[k].color}" stroke-width="2" stroke-linejoin="round"/>`;
+    rs.forEach((r, i) => {
+      if (!r) return;
+      const big = selIdx === i;
+      s += `<circle cx="${X(i)}" cy="${Y(r.pFact)}" r="${big ? 5.5 : 4}" fill="${DIRS[k].color}" stroke="var(--surface)" stroke-width="2"/>`;
+    });
+  });
+  YEARS.forEach((y, i) => {
+    const sel = selIdx === i;
+    s += `<g class="col" tabindex="0" role="button" data-year="${y}" aria-label="${y}: цены ${dirs.map(k => { const r = rows.find(x => x.year === y && x.dir === k); return r ? `${DIRS[k].name} план ${fmt(r.pPlan, 1)}, факт ${fmt(r.pFact, 1)}` : ''; }).join('; ')} ${c.price}">`;
+    s += `<rect class="focus-ring" x="${m.l + band * i + 2}" y="${m.t}" width="${band - 4}" height="${ih}" rx="6"/>`;
+    s += `<rect class="hit" x="${m.l + band * i}" y="${m.t}" width="${band}" height="${ih + m.b}"/>`;
+    s += `<text x="${X(i)}" y="${H - 8}" text-anchor="middle" class="num" style="${sel ? 'fill:var(--ink);font-weight:650' : ''}">${y}</text></g>`;
+  });
+  s += `</svg>`;
+  el.innerHTML = s;
+  const xh = el.querySelector('.xh');
+  el.querySelectorAll('g.col').forEach(g => {
+    const y = +g.dataset.year, i = YEARS.indexOf(y);
+    const html = () => `<div class="tt">${y} · ${c.name}, ${c.price}</div>` + dirs.map(k => {
+      const r = rows.find(x => x.year === y && x.dir === k); if (!r) return '';
+      const p = pct(r.pFact, r.pPlan);
+      return `<div style="margin-top:6px"><div><i class="sw" style="background:${DIRS[k].color}"></i><b>${esc(DIRS[k].name)}</b></div>
+        <div class="tr"><span>План</span><span>${fmt(r.pPlan, 1)}</span></div>
+        <div class="tr"><span>Факт</span><span>${fmt(r.pFact, 1)}</span></div>
+        ${com === 'gas' ? `<div class="tr muted"><span>Факт, $/барр. н.э.</span><span>${fmt(r.pFact / GAS_BOE, 1)}</span></div>` : ''}
+        <div>${stHTML(p)} <span class="muted">(${sgn(r.pFact - r.pPlan, 1)} $)</span></div></div>`;
+    }).join('');
+    const on = () => { xh.setAttribute('x1', X(i)); xh.setAttribute('x2', X(i)); xh.setAttribute('opacity', 1); };
+    const off = () => xh.setAttribute('opacity', 0);
+    g.addEventListener('pointerenter', on); g.addEventListener('pointerleave', off);
+    g.addEventListener('focus', on); g.addEventListener('blur', off);
+    bindTip(g, html, () => selectYear(y));
+  });
+}
+
+function drawAll() {
+  drawFlow();
+  main.querySelectorAll('.chart[data-chart="vol"]').forEach(drawVol);
+  main.querySelectorAll('.chart[data-chart="price"]').forEach(drawPrice);
+}
+
+let raf = 0, lastW = innerWidth;
+new ResizeObserver(() => {
+  if (innerWidth === lastW) return;
+  lastW = innerWidth;
+  cancelAnimationFrame(raf);
+  raf = requestAnimationFrame(() => { drawAll(); raf = 0; });
+}).observe(document.body);
+
+render();
+})();
+</script>
+</body>
+</html>
